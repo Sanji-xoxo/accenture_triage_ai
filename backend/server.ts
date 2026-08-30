@@ -22,7 +22,7 @@ const genId = (prefix: string) => `${prefix}-${Date.now()}-${Math.floor(Math.ran
 // ==========================================
 app.post('/api/patients', (req, res) => {
   const { name, age, gender, sex, arrival_mode, chief_complaint_raw, nurse_observation, has_prior_history, history_summary, vitals } = req.body;
-  const pId = genId('pat');
+  console.log('INCOMING PATIENT:', req.body); const pId = genId('pat');
   const ts = getSimNow();
   const patientSex = sex || gender;
 
@@ -41,7 +41,7 @@ app.post('/api/patients', (req, res) => {
     })();
     res.status(201).json({ id: pId });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('SERVER ERROR:', err); res.status(500).json({ error: err.message });
   }
 });
 
@@ -87,7 +87,7 @@ app.get('/api/patients', (req, res) => {
 
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('SERVER ERROR:', err); res.status(500).json({ error: err.message });
   }
 });
 
@@ -112,7 +112,7 @@ app.get('/api/patients/:id', (req, res) => {
     
     res.json({ patient, vitals, recommendations, actions });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('SERVER ERROR:', err); res.status(500).json({ error: err.message });
   }
 });
 
@@ -134,7 +134,7 @@ app.get('/api/patients/:id/history', (req, res) => {
     
     res.json(history);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('SERVER ERROR:', err); res.status(500).json({ error: err.message });
   }
 });
 
@@ -151,7 +151,7 @@ app.post('/api/patients/:id/vitals', (req, res) => {
     stmt.run(vId, req.params.id, hr, bp_sys, bp_dia, rr, spo2, temp, pain_score, ts);
     res.status(201).json({ id: vId });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('SERVER ERROR:', err); res.status(500).json({ error: err.message });
   }
 });
 
@@ -269,7 +269,7 @@ app.post('/api/patients/:id/recommendations', async (req, res) => {
     })();
     res.status(201).json({ id: rId, evaluation });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('SERVER ERROR:', err); res.status(500).json({ error: err.message });
   }
 });
 
@@ -303,7 +303,7 @@ app.post('/api/recommendations/:id/actions', (req, res) => {
     })();
     res.status(201).json({ id: aId });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('SERVER ERROR:', err); res.status(500).json({ error: err.message });
   }
 });
 
@@ -315,7 +315,7 @@ app.get('/api/audit', (req, res) => {
     const logs = db.prepare('SELECT * FROM audit_logs ORDER BY created_at DESC').all();
     res.json(logs);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('SERVER ERROR:', err); res.status(500).json({ error: err.message });
   }
 });
 
@@ -336,7 +336,7 @@ app.get('/api/capacity', (req, res) => {
     `).all();
     res.json(snaps.map((s: any) => ({ ...s, surge_mode: s.surge_mode === 1 })));
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('SERVER ERROR:', err); res.status(500).json({ error: err.message });
   }
 });
 
@@ -356,7 +356,7 @@ app.post('/api/capacity/surge', (req, res) => {
     })();
     res.json({ success: true, surge_mode });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('SERVER ERROR:', err); res.status(500).json({ error: err.message });
   }
 });
 
@@ -425,7 +425,7 @@ app.post('/api/reset-db', (req, res) => {
     setTimeout(() => process.exit(0), 100);
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error('SERVER ERROR:', err); res.status(500).json({ error: err.message });
   }
 });
 

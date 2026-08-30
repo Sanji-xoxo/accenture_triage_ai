@@ -60,6 +60,7 @@ export const IntakeForm: React.FC<IntakeFormProps> = ({ onSubmit, className = ''
           name: name.trim(),
           age: computedAge,
           gender,
+          chief_complaint_raw: chiefComplaint.trim(),
           has_prior_history: hasHistory,
           arrival_mode: arrivalMode,
           history_summary: hasHistory ? historySummary : null,
