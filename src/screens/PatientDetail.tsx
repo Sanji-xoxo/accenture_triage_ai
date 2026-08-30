@@ -28,14 +28,7 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({
   onBack,
   className = '',
 }) => {
-  const getAge = (dob: string) => {
-    const birthday = new Date(dob);
-    const ageDifMs = Date.now() - birthday.getTime();
-    const ageDate = new Date(ageDifMs);
-    return Math.abs(ageDate.getUTCFullYear() - 1970);
-  };
-
-  const age = getAge(patient.dob);
+  const age = patient.age;
 
   const [timelinePoints, setTimelinePoints] = useState<any[]>([]);
 
@@ -78,7 +71,7 @@ export const PatientDetail: React.FC<PatientDetailProps> = ({
             <div className="flex items-center space-x-2.5">
               <h2 className="text-base font-bold text-clinical-text-primary">{patient.name}</h2>
               <span className="text-xs text-clinical-text-secondary font-mono">
-                {patient.gender} • DOB: {patient.dob} ({age} years old)
+                {patient.gender} • Age: {age}
               </span>
             </div>
             <div className="flex items-center space-x-2 mt-1 text-xs text-clinical-text-secondary">

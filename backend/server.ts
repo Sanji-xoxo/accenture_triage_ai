@@ -21,15 +21,16 @@ const genId = (prefix: string) => `${prefix}-${Date.now()}`;
 // 1. POST /api/patients (Create/Intake)
 // ==========================================
 app.post('/api/patients', (req, res) => {
-  const { name, age, sex, arrival_mode, chief_complaint_raw, nurse_observation, has_prior_history, history_summary, vitals } = req.body;
+  const { name, age, gender, sex, arrival_mode, chief_complaint_raw, nurse_observation, has_prior_history, history_summary, vitals } = req.body;
   const pId = genId('pat');
   const ts = getSimNow();
+  const patientSex = sex || gender;
 
   try {
     db.transaction(() => {
       // Insert patient
       const stmt = db.prepare('INSERT INTO patients (id, name, age, sex, arrival_mode, chief_complaint_raw, nurse_observation, has_prior_history, history_summary, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-      stmt.run(pId, name, age, sex, arrival_mode, chief_complaint_raw, nurse_observation || null, has_prior_history ? 1 : 0, history_summary || null, ts);
+      stmt.run(pId, name, age, patientSex, arrival_mode, chief_complaint_raw, nurse_observation || null, has_prior_history ? 1 : 0, history_summary || null, ts);
 
       // Insert initial vitals if provided
       if (vitals) {
@@ -59,14 +60,22 @@ app.get('/api/patients', (req, res) => {
   `;
   
   try {
-    const patients = db.prepare(query).all().map((p: any) => ({
-      ...p,
-      has_prior_history: p.has_prior_history === 1,
-      gender: p.sex,
-      latest_vitals: p.latest_vitals ? JSON.parse(p.latest_vitals) : null,
-      latest_recommendation: p.latest_recommendation ? JSON.parse(p.latest_recommendation) : null,
-      triage_status: p.triage_status || 'PENDING'
-    }));
+    const patients = db.prepare(query).all().map((p: any) => {
+      const rawStatus = p.triage_status ? p.triage_status.toUpperCase() : 'PENDING';
+      let mappedStatus = rawStatus;
+      if (rawStatus === 'ACCEPT') mappedStatus = 'ACCEPTED';
+      if (rawStatus === 'MODIFY') mappedStatus = 'MODIFIED';
+      if (rawStatus === 'OVERRIDE') mappedStatus = 'OVERRIDDEN';
+
+      return {
+        ...p,
+        has_prior_history: p.has_prior_history === 1,
+        gender: p.sex,
+        latest_vitals: p.latest_vitals ? JSON.parse(p.latest_vitals) : null,
+        latest_recommendation: p.latest_recommendation ? JSON.parse(p.latest_recommendation) : null,
+        triage_status: mappedStatus
+      };
+    });
 
     let result = patients;
     if (status && status !== 'ALL') {
@@ -248,6 +257,15 @@ app.post('/api/patients/:id/recommendations', async (req, res) => {
       
       const aStmt = db.prepare('INSERT INTO audit_logs (id, patient_id, event_type, actor, prior_value, new_value, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
       aStmt.run(genId('audit'), pId, 'RECOMMENDATION_GENERATED', evaluation.model_version, null, JSON.stringify({ recommended_esi: evaluation.acuity_score, confidence: evaluation.confidence_pct }), rationale, ts);
+
+      // Auto-assign logic for non-critical cases (ESI 3, 4, 5)
+      if (evaluation.acuity_score >= 3) {
+        const actionStmt = db.prepare('INSERT INTO nurse_actions (id, recommendation_id, action_type, modified_acuity, modified_routing, note, actor_name, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+        actionStmt.run(genId('action'), rId, 'accept', null, null, 'Auto-assigned by AI (Non-critical ESI)', 'AI Auto-Assign', ts);
+        
+        const aStmt2 = db.prepare('INSERT INTO audit_logs (id, patient_id, event_type, actor, prior_value, new_value, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+        aStmt2.run(genId('audit'), pId, 'AI_AUTO_ACCEPT', 'AI Engine', null, JSON.stringify({ esi: evaluation.acuity_score }), 'Safely auto-assigned non-critical ESI', ts);
+      }
     })();
     res.status(201).json({ id: rId, evaluation });
   } catch (err: any) {

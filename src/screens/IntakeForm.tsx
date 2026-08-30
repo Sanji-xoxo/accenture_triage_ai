@@ -32,6 +32,13 @@ export const IntakeForm: React.FC<IntakeFormProps> = ({ onSubmit, className = ''
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState('');
 
+  const calculateAge = (dobString: string) => {
+    if (!dobString) return 40;
+    const birthday = new Date(dobString);
+    const ageDifMs = Date.now() - birthday.getTime();
+    return Math.abs(new Date(ageDifMs).getUTCFullYear() - 1970);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !chiefComplaint.trim() || hr === '' || bpSystolic === '' || bpDiastolic === '' || rr === '' || spo2 === '' || temp === '') {
@@ -42,17 +49,25 @@ export const IntakeForm: React.FC<IntakeFormProps> = ({ onSubmit, className = ''
     setFormError('');
     setIsLoading(true);
 
+    const computedAge = calculateAge(dob);
+
     // Simulate AI extraction loading state
     setTimeout(() => {
       setIsLoading(false);
       onSubmit(
         {
+          id: '',
           name: name.trim(),
-          dob: dob || '1980-01-01',
+          age: computedAge,
           gender,
           has_prior_history: hasHistory,
           arrival_mode: arrivalMode,
-          history_summary: hasHistory ? historySummary : null
+          history_summary: hasHistory ? historySummary : null,
+          temperature: Number(temp),
+          blood_pressure_systolic: Number(bpSystolic),
+          blood_pressure_diastolic: Number(bpDiastolic),
+          oxygen_saturation: Number(spo2),
+          pain_score: pain
         },
         {
           heart_rate: Number(hr),

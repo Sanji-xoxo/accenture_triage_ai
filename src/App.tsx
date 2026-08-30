@@ -263,7 +263,12 @@ function App() {
         timestamp: new Date().toISOString()
       });
 
-      setCurrentRoute('pending-triage');
+      if (evaluation.acuity_score >= 3) {
+        setCurrentRoute('dashboard');
+      } else {
+        setCurrentRoute('pending-triage');
+      }
+      
       loadPatients();
       loadAuditLogs();
     } catch (err) {

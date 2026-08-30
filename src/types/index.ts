@@ -5,7 +5,7 @@ export type ActionType = 'ACCEPT' | 'MODIFY' | 'OVERRIDE';
 export interface Patient {
   id: string;
   name: string;
-  dob: string; // ISO date string (YYYY-MM-DD)
+  age: number;
   gender: string;
   has_prior_history: boolean;
   arrival_mode: string; // "Ambulance" | "Walk-in" | "Police" | "Air Transport" | etc.

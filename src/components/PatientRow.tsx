@@ -26,14 +26,7 @@ export const PatientRow: React.FC<PatientRowProps> = ({
   isSelected = false,
   className = '',
 }) => {
-  const getAge = (dob: string) => {
-    const birthday = new Date(dob);
-    const ageDifMs = Date.now() - birthday.getTime();
-    const ageDate = new Date(ageDifMs);
-    return Math.abs(ageDate.getUTCFullYear() - 1970);
-  };
-
-  const age = getAge(patient.dob);
+  const age = patient.age;
 
   // Triage Wait Time Safe Thresholds (ESI-specific)
   const getWaitThreshold = (esi: EsiLevel) => {
