@@ -53,6 +53,9 @@ export interface Recommendation {
   suggested_routing: string; // e.g. "Resus Room 1", "Acute Zone", "Fast Track"
   is_capacity_adjusted: boolean;
   model_version: string;
+  shap_drivers?: any[];
+  deterioration_risk_pct?: number;
+  time_to_deterioration_mins?: number;
 }
 
 export interface NurseAction {

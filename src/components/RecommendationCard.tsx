@@ -53,22 +53,43 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
         </div>
       </div>
 
-      {/* Key Drivers */}
+      {/* Deterioration Risk Prediction */}
+      {recommendation.deterioration_risk_pct !== undefined && (
+        <div className="bg-slate-800 text-white p-2.5 rounded shadow-inner">
+          <div className="flex justify-between items-center mb-1">
+             <span className="text-[10px] uppercase font-bold tracking-widest text-slate-300">Deterioration Model (GRU)</span>
+             <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${recommendation.deterioration_risk_pct > 50 ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+                {recommendation.deterioration_risk_pct.toFixed(1)}% Risk
+             </span>
+          </div>
+          <div className="w-full bg-slate-700 h-1.5 rounded-full overflow-hidden mt-1 mb-1">
+             <div className={`h-full ${recommendation.deterioration_risk_pct > 50 ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${recommendation.deterioration_risk_pct}%` }} />
+          </div>
+          <p className="text-[10px] text-slate-400 italic text-right">Est. time to event: {recommendation.time_to_deterioration_mins?.toFixed(0)} mins</p>
+        </div>
+      )}
+
+      {/* SHAP Feature Importance */}
       <div>
-        <span className="block text-[10px] text-clinical-text-muted uppercase tracking-wider font-semibold mb-1">Key Clinical Drivers</span>
-        <div className="flex flex-wrap gap-1">
+        <span className="block text-[10px] text-clinical-text-muted uppercase tracking-wider font-semibold mb-1">XGBoost SHAP Feature Importance</span>
+        <div className="flex flex-col gap-1 mt-1">
           {key_drivers.length > 0 ? (
-            key_drivers.map((driver, idx) => (
-              <span 
-                key={idx} 
-                className="inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200"
-              >
-                <Activity className="w-2.5 h-2.5 mr-1 text-slate-500" />
-                {driver}
-              </span>
-            ))
+            key_drivers.map((driver, idx) => {
+              const isAggravating = driver.includes('+');
+              return (
+                <div key={idx} className="flex justify-between items-center bg-slate-50 border border-slate-100 p-1 rounded">
+                  <span className="text-[11px] font-medium text-slate-700 flex items-center">
+                    <Activity className="w-3 h-3 mr-1 text-slate-400" />
+                    {driver.split(':')[0]}
+                  </span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isAggravating ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                    {driver.split(':')[1]}
+                  </span>
+                </div>
+              );
+            })
           ) : (
-            <span className="text-xs text-clinical-text-secondary italic">No critical physiological triggers detected.</span>
+            <span className="text-xs text-clinical-text-secondary italic">No features exceeded SHAP importance threshold.</span>
           )}
         </div>
       </div>

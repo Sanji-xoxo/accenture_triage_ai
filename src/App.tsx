@@ -257,6 +257,9 @@ function App() {
         suggested_routing: evaluation.suggested_routing,
         is_capacity_adjusted: evaluation.is_capacity_adjusted,
         model_version: evaluation.model_version,
+        shap_drivers: evaluation.shap_drivers,
+        deterioration_risk_pct: evaluation.deterioration_risk_pct,
+        time_to_deterioration_mins: evaluation.time_to_deterioration_mins,
         timestamp: new Date().toISOString()
       });
 

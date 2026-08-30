@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import db from './db';
 import { evaluatePatient, PatientEvaluationInput } from './decision_engine/index';
-import { getSimNow, isSimRunning, simMultiplier, simOffsetMs, startSimulation, pauseSimulation, resetSimulation, setMultiplier, activeAlerts, dismissAlert } from './simulation';
+import { getSimNow, isSimRunning, simMultiplier, simOffsetMs, startSimulation, pauseSimulation, resetSimulation, setMultiplier, activeAlerts, dismissAlert, manualFireDeterioration } from './simulation';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const app = express();
@@ -156,53 +156,14 @@ app.post('/api/patients/:id/recommendations', async (req, res) => {
     let redFlags: string[] = [];
     let lifeThreateningFlags: string[] = [];
     let symptoms: string[] = [];
-    let modelVersion = 'decision_engine_v1';
     
-    // Fallback logic function to guarantee a result even if Gemini fails or is missing
-    const fallbackExtraction = () => {
-        const obs = (patient.nurse_observation || '').toLowerCase();
-        const cc = (patient.chief_complaint_raw || '').toLowerCase();
-        if (obs.includes('confusion') || obs.includes('altered')) redFlags.push('Altered Mental Status');
-        if (obs.includes('chest pain') || cc.includes('chest pain')) redFlags.push('Chest Pain');
-        if (obs.includes('unresponsive') || obs.includes('no pulse')) lifeThreateningFlags.push('Unresponsive / No Pulse');
-        if (obs.includes('pain') || cc.includes('pain')) symptoms.push('pain');
-        if (obs.includes('nausea') || cc.includes('nausea')) symptoms.push('nausea');
-        modelVersion = 'decision_engine_v1 (fallback)';
-    };
-
-    if (process.env.VITE_GEMINI_API_KEY && process.env.VITE_GEMINI_API_KEY.trim() !== '') {
-      try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-        const prompt = `
-          Analyze the following Emergency Department intake data:
-          Chief Complaint: ${patient.chief_complaint_raw}
-          Nurse Observation: ${patient.nurse_observation || 'None'}
-          
-          Extract the data into a JSON object with strictly these three arrays of strings:
-          {
-            "redFlags": ["list of critical warning signs, e.g., Altered Mental Status, Hypoxia, Chest Pain"],
-            "lifeThreateningFlags": ["list of immediate life threats, e.g., Unresponsive, Pulseless"],
-            "symptoms": ["list of general symptoms, e.g., pain, dizziness, nausea"]
-          }
-          
-          Return ONLY valid JSON.
-        `;
-        const result = await model.generateContent(prompt);
-        let text = result.response.text();
-        // Strip markdown code blocks if any
-        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(text);
-        redFlags = parsed.redFlags || [];
-        lifeThreateningFlags = parsed.lifeThreateningFlags || [];
-        symptoms = parsed.symptoms || [];
-        modelVersion = 'decision_engine_v1 + Gemini Live';
-      } catch (aiErr) {
-        console.error("Gemini AI Extraction failed, falling back to deterministic mock:", aiErr);
-        fallbackExtraction();
-      }
-    } else {
-        fallbackExtraction();
-    }
+    const obs = (patient.nurse_observation || '').toLowerCase();
+    const cc = (patient.chief_complaint_raw || '').toLowerCase();
+    if (obs.includes('confusion') || obs.includes('altered')) redFlags.push('Altered Mental Status');
+    if (obs.includes('chest pain') || cc.includes('chest pain')) redFlags.push('Chest Pain');
+    if (obs.includes('unresponsive') || obs.includes('no pulse')) lifeThreateningFlags.push('Unresponsive / No Pulse');
+    if (obs.includes('pain') || cc.includes('pain')) symptoms.push('pain');
+    if (obs.includes('nausea') || cc.includes('nausea')) symptoms.push('nausea');
 
     const vitals = db.prepare('SELECT * FROM vitals_readings WHERE patient_id = ? ORDER BY recorded_at DESC LIMIT 1').get(pId) as any || {
       hr: null, bp_sys: null, bp_dia: null, rr: null, spo2: null, temp: null, pain_score: null
@@ -221,27 +182,68 @@ app.post('/api/patients/:id/recommendations', async (req, res) => {
     const capacities: Record<string, number> = {};
     snaps.forEach((s: any) => { capacities[s.zone_name] = s.beds_free; });
 
-    const input: PatientEvaluationInput = {
+    // ML Payload
+    const mlPayload = {
       age: patient.age,
-      vitals,
-      redFlags,
-      lifeThreateningFlags,
-      symptoms,
-      hasPriorHistory: patient.has_prior_history === 1,
-      capacities
+      hr: vitals.hr || 80,
+      bp_sys: vitals.bp_sys || 120,
+      bp_dia: vitals.bp_dia || 80,
+      rr: vitals.rr || 16,
+      spo2: vitals.spo2 || 98,
+      temp: vitals.temp || 98.6,
+      pain_score: vitals.pain_score || 0,
+      has_prior_history: patient.has_prior_history,
+      has_red_flag: redFlags.length > 0 ? 1 : 0,
+      has_life_threat: lifeThreateningFlags.length > 0 ? 1 : 0
+    };
+    
+    let mlResult;
+    let detResult;
+    try {
+      const mlRes = await fetch('http://127.0.0.1:8000/api/predict_esi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(mlPayload)
+      });
+      mlResult = await mlRes.json();
+      
+      const detRes = await fetch('http://127.0.0.1:8000/api/predict_deterioration', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(mlPayload)
+      });
+      detResult = await detRes.json();
+    } catch(e) {
+      console.error("ML service unreachable", e);
+      mlResult = { acuity_score: 3, confidence_pct: 50, shap_drivers: [], model_version: 'Fallback' };
+      detResult = { deterioration_risk_pct: 10, time_to_deterioration_mins: 120 };
+    }
+
+    const suggestedRouting = mlResult.acuity_score <= 2 ? (capacities['Resus'] > 0 ? 'Resus Zone' : 'Acute Zone') : 'Fast Track';
+    const is_capacity_adjusted = mlResult.acuity_score <= 2 && capacities['Resus'] === 0;
+
+    const evaluation = {
+      acuity_score: mlResult.acuity_score,
+      confidence_pct: mlResult.confidence_pct,
+      key_drivers: mlResult.shap_drivers ? mlResult.shap_drivers.map((d: any) => `${d.feature} (${d.value}): ${d.shap_impact > 0 ? '+' : ''}${d.shap_impact.toFixed(2)} impact`) : [],
+      escalated: false,
+      escalation_reason: null,
+      suggested_routing: suggestedRouting,
+      is_capacity_adjusted: is_capacity_adjusted,
+      model_version: mlResult.model_version,
+      shap_drivers: mlResult.shap_drivers || [],
+      deterioration_risk_pct: detResult.deterioration_risk_pct,
+      time_to_deterioration_mins: detResult.time_to_deterioration_mins
     };
 
-    const evaluation = evaluatePatient(input);
-    const suggestedRouting = evaluation.suggested_routing;
     const rationale = evaluation.key_drivers.join('. ');
 
     db.transaction(() => {
       const stmt = db.prepare('INSERT INTO recommendations (id, patient_id, acuity_score, confidence_pct, rationale_text, key_drivers, escalated, escalation_reason, suggested_routing, is_capacity_adjusted, model_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-      stmt.run(rId, pId, evaluation.acuity_score, evaluation.confidence_pct, rationale, JSON.stringify(evaluation.key_drivers), evaluation.escalated ? 1 : 0, evaluation.escalation_reason, suggestedRouting, evaluation.is_capacity_adjusted ? 1 : 0, modelVersion, ts);
+      stmt.run(rId, pId, evaluation.acuity_score, evaluation.confidence_pct, rationale, JSON.stringify(evaluation.key_drivers), evaluation.escalated ? 1 : 0, evaluation.escalation_reason, suggestedRouting, evaluation.is_capacity_adjusted ? 1 : 0, evaluation.model_version, ts);
       
-      // Auto-write audit log per requirements
       const aStmt = db.prepare('INSERT INTO audit_logs (id, patient_id, event_type, actor, prior_value, new_value, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-      aStmt.run(genId('audit'), pId, 'RECOMMENDATION_GENERATED', modelVersion, null, JSON.stringify({ recommended_esi: evaluation.acuity_score, confidence: evaluation.confidence_pct }), rationale, ts);
+      aStmt.run(genId('audit'), pId, 'RECOMMENDATION_GENERATED', evaluation.model_version, null, JSON.stringify({ recommended_esi: evaluation.acuity_score, confidence: evaluation.confidence_pct }), rationale, ts);
     })();
     res.status(201).json({ id: rId, evaluation });
   } catch (err: any) {
@@ -371,10 +373,6 @@ app.post('/api/alerts/:id/dismiss', (req, res) => {
   res.json({ success });
 });
 
-import { manualFireDeterioration } from './simulation';
-import * as fs from 'fs';
-import * as path from 'path';
-import { setupDb } from './db';
 
 app.post('/api/simulation/deteriorate', (req, res) => {
   const { patientId } = req.body;
