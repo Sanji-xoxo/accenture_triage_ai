@@ -62,6 +62,7 @@ app.get('/api/patients', (req, res) => {
     const patients = db.prepare(query).all().map((p: any) => ({
       ...p,
       has_prior_history: p.has_prior_history === 1,
+      gender: p.sex,
       latest_vitals: p.latest_vitals ? JSON.parse(p.latest_vitals) : null,
       latest_recommendation: p.latest_recommendation ? JSON.parse(p.latest_recommendation) : null,
       triage_status: p.triage_status || 'PENDING'
@@ -90,6 +91,7 @@ app.get('/api/patients/:id', (req, res) => {
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
     
     patient.has_prior_history = patient.has_prior_history === 1;
+    patient.gender = patient.sex;
     
     const vitals = db.prepare('SELECT * FROM vitals_readings WHERE patient_id = ? ORDER BY recorded_at ASC').all(req.params.id);
     const recommendations = db.prepare('SELECT * FROM recommendations WHERE patient_id = ? ORDER BY created_at DESC').all(req.params.id).map((r: any) => ({
