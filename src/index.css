@@ -1,0 +1,38 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-clinical-bg text-clinical-text-primary font-sans antialiased text-[14px] leading-5;
+  }
+  
+  h1 {
+    @apply text-xl font-bold tracking-tight text-clinical-text-primary;
+  }
+  
+  h2 {
+    @apply text-base font-semibold tracking-tight text-clinical-text-primary;
+  }
+  
+  h3 {
+    @apply text-sm font-semibold tracking-tight text-clinical-text-primary;
+  }
+}
+
+/* Dense clinical custom utilities */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  @apply bg-slate-100;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 rounded;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400;
+}
