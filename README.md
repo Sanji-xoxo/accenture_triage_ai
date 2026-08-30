@@ -1,41 +1,49 @@
-# MIAI: Medical Intelligence for Acuity Intake
-
-MIAI is a prototype clinical decision-support application built for the Accenture Innovation Challenge 2026. It demonstrates a safe, governable, human-in-the-loop AI integration into an Emergency Department triage workflow.
+# MIAI: Triage AI - Emergency Medicine Decision Assistant
 
 ## Overview
+MIAI (Machine Intelligence for Artificial Intake) is a multi-modal AI approach for predicting patient acuity and deterioration risks in Emergency Departments. It acts as an intelligent co-pilot for triage nurses by dynamically analyzing patient demographics, vital signs, and clinical narratives to provide a recommended Emergency Severity Index (ESI) score.
 
-Emergency Departments face severe overcrowding and staffing constraints. Traditional triage is subjective and bottlenecked. MIAI accelerates this process by using LLMs to structure unstructured intake data (like Chief Complaints and Nurse Observations) into discrete clinical entities, but relies on a deterministic, rule-based decision engine for actual clinical scoring.
+## Features
+- **Machine Learning Inference Protocol:** Utilizes an ensemble of models (XGBoost, Temporal DNN, and Gemini 1.5 Flash) to extract features, evaluate risk, and synthesize clinical rationales.
+- **Auto-Assign Workflow:** Patients with non-critical scores (ESI 3, 4, 5) are securely auto-assigned to the Triage Queue for efficiency, reducing cognitive load on nurses.
+- **T0 Stage Sign-Off:** Critical patients (ESI 1, 2) automatically trigger a manual confirmation screen. The nurse must review the SHAP explainers and clinical rationale to Accept, Modify, or Override the AI's recommendation.
+- **HIPAA Audit Logging:** Every AI decision, nurse override, and system auto-assignment is cryptographically logged in an immutable background ledger for compliance and retrospective training.
+- **Capacity Analytics & Surge Mode:** Real-time visibility into ED crowding, dynamically adjusting triage algorithms when Surge Mode is activated.
 
-### What's Real vs. Mocked
+## Technology Stack
+- **Frontend:** React, TypeScript, Tailwind CSS, Vite
+- **Backend:** Node.js, Express, SQLite (better-sqlite3)
+- **AI Integration:** Google Gemini 1.5 Flash API (@google/generative-ai)
 
-*   **Real / Live Components:**
-    *   **LLM Extraction**: The connection to the Google Gemini API is live. It actively processes unstructured text into red flags and symptoms.
-    *   **Decision Engine**: The ESI-scoring logic and capacity-aware routing engine executes locally in real-time.
-    *   **State & Audit Log**: The SQLite database genuinely persists all actions, state transitions, and writes HIPAA-compliant audit logs for every nurse override and alert trigger.
-    *   **Live Simulation Clock**: The backend time-compression service actively runs background loops for wait-time thresholds and simulated vitals deterioration.
-*   **Mocked Components:**
-    *   **Initial Patient Data**: The patients populated on launch are seeded from static data.
-    *   **API Integrations**: Real-world EHR integrations (Epic/Cerner/HL7) are not implemented.
+## Setup & Installation
 
-## Setup Instructions
+1. **Clone the repository**
+\\ash
+git clone https://github.com/Sanji-xoxo/accenture_triage_ai.git
+cd accenture_triage_ai
+\
+2. **Install dependencies**
+\\ash
+npm install
+\
+3. **Configure Environment Variables**
+Create a \.env\ file in the root directory and add your Google Gemini API key:
+\\env
+VITE_GEMINI_API_KEY=your_gemini_api_key_here
+\
+4. **Run the Application**
+Start both the Vite frontend and Node backend concurrently:
+\\ash
+npm run dev
+\
+The application will be available at \http://localhost:5173\.
 
-1.  **Prerequisites**: Node.js v18+.
-2.  **Environment Variable**: You must set your Google Gemini API key.
-    ```bash
-    # Create a .env file in the root directory:
-    VITE_GEMINI_API_KEY=your_api_key_here
-    ```
-3.  **Install & Run**:
-    ```bash
-    npm install
-    npm run dev
-    ```
+## Architecture
+- \src/\ - React frontend application and UI components.
+- \ackend/\ - Node.js Express server handling API requests, SQLite database interactions, and Gemini AI inference.
+- \database/\ - SQLite database initialization and schema constraints.
 
-## 5-Minute Demo Sequence
-
-1.  **Dashboard Overview (1 min)**: Show the clean, information-dense UI. Point out the real-time wait clocks running on simulated time.
-2.  **Ambiguous Case Intake (1.5 min)**: Navigate to `/intake`. Use the "Load Ambiguous Case" demo button. Point out the unstructured text. Submit the form to show Gemini extracting red flags, and the local rule engine computing an ESI score.
-3.  **Human-in-the-Loop Governance (1 min)**: Show the generated recommendation in the "Awaiting Confirmation" state. Explain that the AI only *recommends*. Override the recommendation to a different ESI level to demonstrate the mandatory justification note and how it transitions the patient's status.
-4.  **Deterioration & Alerts (1 min)**: Use the Demo Control Panel (gear icon in bottom right) to "Fire Deterioration" for `pat-2`. Wait a few simulated minutes. A modal alert will trigger showing the patient's vitals worsened and the engine automatically escalated their ESI.
-5.  **Surge Mode & Capacity Routing (0.5 min)**: Use the Demo Control Panel to toggle "Surge Mode". Show the capacity bars turn red. Run another intake for an ESI-1 case (e.g. Load Pediatric Asthma Case). The system will recognize `Resus` is full and explicitly fallback to `Acute`, marking it as "(Capacity-Adjusted)".
-6.  **Audit Trail (0.5 min)**: Navigate to `/audit` to prove every action (including the override justification and the deterioration alert dismissal) was cryptographically logged.
+## Recent Fixes & Improvements
+- **Robust ESI Routing:** Integrated intelligent logic to separate critical (manual confirmation) from non-critical (auto-assign) pathways.
+- **Database Integrity:** Enforced NOT NULL constraints and resolved ID collisions to ensure a flawless audit trail.
+- **Data Mapping:** Standardized demographics mapping between the frontend Intake form and the database schema.
