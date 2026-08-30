@@ -248,7 +248,7 @@ function App() {
         patient_id: pId,
         acuity_score: evaluation.acuity_score,
         confidence_score: evaluation.confidence_pct,
-        explanation: evaluation.key_drivers.join('. '),
+        explanation: evaluation.clinical_rationale,
         escalation_reason: evaluation.escalation_reason || null,
         key_drivers: evaluation.key_drivers,
         is_escalated_low_confidence: evaluation.confidence_pct < 60,

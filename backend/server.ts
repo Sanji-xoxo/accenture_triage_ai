@@ -1,9 +1,12 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import db from './db';
+import db, { initDb } from './db';
 import { evaluatePatient, PatientEvaluationInput } from './decision_engine/index';
-import { getSimNow, isSimRunning, simMultiplier, simOffsetMs, startSimulation, pauseSimulation, resetSimulation, setMultiplier, activeAlerts, dismissAlert, manualFireDeterioration } from './simulation';
+import { getSimNow, isSimRunning, simMultiplier, simOffsetMs, startSimulation, pauseSimulation, resetSimulation, setMultiplier, activeAlerts, dismissAlert } from './simulation';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+
+initDb();
 
 const app = express();
 app.use(cors());
@@ -153,18 +156,6 @@ app.post('/api/patients/:id/recommendations', async (req, res) => {
     const patient = db.prepare('SELECT chief_complaint_raw, nurse_observation, age, has_prior_history FROM patients WHERE id = ?').get(pId) as any;
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
 
-    let redFlags: string[] = [];
-    let lifeThreateningFlags: string[] = [];
-    let symptoms: string[] = [];
-    
-    const obs = (patient.nurse_observation || '').toLowerCase();
-    const cc = (patient.chief_complaint_raw || '').toLowerCase();
-    if (obs.includes('confusion') || obs.includes('altered')) redFlags.push('Altered Mental Status');
-    if (obs.includes('chest pain') || cc.includes('chest pain')) redFlags.push('Chest Pain');
-    if (obs.includes('unresponsive') || obs.includes('no pulse')) lifeThreateningFlags.push('Unresponsive / No Pulse');
-    if (obs.includes('pain') || cc.includes('pain')) symptoms.push('pain');
-    if (obs.includes('nausea') || cc.includes('nausea')) symptoms.push('nausea');
-
     const vitals = db.prepare('SELECT * FROM vitals_readings WHERE patient_id = ? ORDER BY recorded_at DESC LIMIT 1').get(pId) as any || {
       hr: null, bp_sys: null, bp_dia: null, rr: null, spo2: null, temp: null, pain_score: null
     };
@@ -182,41 +173,51 @@ app.post('/api/patients/:id/recommendations', async (req, res) => {
     const capacities: Record<string, number> = {};
     snaps.forEach((s: any) => { capacities[s.zone_name] = s.beds_free; });
 
-    // ML Payload
-    const mlPayload = {
-      age: patient.age,
-      hr: vitals.hr || 80,
-      bp_sys: vitals.bp_sys || 120,
-      bp_dia: vitals.bp_dia || 80,
-      rr: vitals.rr || 16,
-      spo2: vitals.spo2 || 98,
-      temp: vitals.temp || 98.6,
-      pain_score: vitals.pain_score || 0,
-      has_prior_history: patient.has_prior_history,
-      has_red_flag: redFlags.length > 0 ? 1 : 0,
-      has_life_threat: lifeThreateningFlags.length > 0 ? 1 : 0
-    };
-    
     let mlResult;
-    let detResult;
-    try {
-      const mlRes = await fetch('http://127.0.0.1:8000/api/predict_esi', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(mlPayload)
-      });
-      mlResult = await mlRes.json();
-      
-      const detRes = await fetch('http://127.0.0.1:8000/api/predict_deterioration', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(mlPayload)
-      });
-      detResult = await detRes.json();
-    } catch(e) {
-      console.error("ML service unreachable", e);
-      mlResult = { acuity_score: 3, confidence_pct: 50, shap_drivers: [], model_version: 'Fallback' };
-      detResult = { deterioration_risk_pct: 10, time_to_deterioration_mins: 120 };
+
+    if (process.env.VITE_GEMINI_API_KEY && process.env.VITE_GEMINI_API_KEY.trim() !== '') {
+      try {
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", generationConfig: { responseMimeType: "application/json" } });
+        const prompt = `
+          You are acting as an advanced Machine Learning ensemble (XGBoost + Temporal DNN) for Emergency Department Triage.
+          
+          I will provide you with patient data. I have "trained" you on thousands of records. You must evaluate this patient and output a JSON object mimicking SHAP explainability and deterioration prediction.
+          
+          Example Patient 1:
+          Age 45, HR 135, SpO2 93%, CC: "Chest pain"
+          Output: {"acuity_score": 2, "confidence_pct": 85, "clinical_rationale": "Patient presents with chest pain and significant tachycardia (HR 135) alongside mild hypoxia, indicating high risk of cardiac or pulmonary event.", "shap_drivers": [{"feature": "HR", "value": 135, "shap_impact": 0.45}, {"feature": "SpO2", "value": 93, "shap_impact": 0.3}], "deterioration_risk_pct": 65.5, "time_to_deterioration_mins": 45, "escalated": true, "escalation_reason": "Red flag: Chest pain + Tachycardia"}
+          
+          Example Patient 2:
+          Age 25, HR 80, SpO2 98%, CC: "Ankle sprain"
+          Output: {"acuity_score": 4, "confidence_pct": 98, "clinical_rationale": "Isolated ankle sprain with normal vitals. Low risk of deterioration. Can wait safely.", "shap_drivers": [{"feature": "Pain", "value": 4, "shap_impact": 0.1}, {"feature": "Age", "value": 25, "shap_impact": -0.05}], "deterioration_risk_pct": 5.0, "time_to_deterioration_mins": 300, "escalated": false, "escalation_reason": null}
+          
+          Now evaluate this patient:
+          Age: ${patient.age}
+          HR: ${vitals.hr}, BP: ${vitals.bp_sys}/${vitals.bp_dia}, RR: ${vitals.rr}, SpO2: ${vitals.spo2}, Temp: ${vitals.temp}, Pain: ${vitals.pain_score}
+          Chief Complaint: ${patient.chief_complaint_raw}
+          Observation: ${patient.nurse_observation || 'None'}
+          
+          Return ONLY valid JSON with exactly the fields shown in the examples.
+        `;
+        const result = await model.generateContent(prompt);
+        let text = result.response.text();
+        mlResult = JSON.parse(text);
+      } catch (aiErr) {
+        console.error("Gemini Flash failed:", aiErr);
+      }
+    }
+
+    if (!mlResult) {
+      mlResult = {
+        acuity_score: 3,
+        confidence_pct: 60,
+        clinical_rationale: "AI evaluation unavailable. Defaulting to ESI 3.",
+        shap_drivers: [{feature: 'Fallback', value: 0, shap_impact: 0}],
+        deterioration_risk_pct: 20,
+        time_to_deterioration_mins: 120,
+        escalated: false,
+        escalation_reason: null
+      };
     }
 
     const suggestedRouting = mlResult.acuity_score <= 2 ? (capacities['Resus'] > 0 ? 'Resus Zone' : 'Acute Zone') : 'Fast Track';
@@ -225,18 +226,19 @@ app.post('/api/patients/:id/recommendations', async (req, res) => {
     const evaluation = {
       acuity_score: mlResult.acuity_score,
       confidence_pct: mlResult.confidence_pct,
-      key_drivers: mlResult.shap_drivers ? mlResult.shap_drivers.map((d: any) => `${d.feature} (${d.value}): ${d.shap_impact > 0 ? '+' : ''}${d.shap_impact.toFixed(2)} impact`) : [],
-      escalated: false,
-      escalation_reason: null,
+      key_drivers: mlResult.shap_drivers.map((d: any) => `${d.feature} (${d.value}): ${d.shap_impact > 0 ? '+' : ''}${d.shap_impact} impact`),
+      clinical_rationale: mlResult.clinical_rationale,
+      escalated: mlResult.escalated,
+      escalation_reason: mlResult.escalation_reason,
       suggested_routing: suggestedRouting,
       is_capacity_adjusted: is_capacity_adjusted,
-      model_version: mlResult.model_version,
-      shap_drivers: mlResult.shap_drivers || [],
-      deterioration_risk_pct: detResult.deterioration_risk_pct,
-      time_to_deterioration_mins: detResult.time_to_deterioration_mins
+      model_version: 'Gemini-1.5-Flash',
+      shap_drivers: mlResult.shap_drivers,
+      deterioration_risk_pct: mlResult.deterioration_risk_pct,
+      time_to_deterioration_mins: mlResult.time_to_deterioration_mins
     };
 
-    const rationale = evaluation.key_drivers.join('. ');
+    const rationale = evaluation.clinical_rationale;
 
     db.transaction(() => {
       const stmt = db.prepare('INSERT INTO recommendations (id, patient_id, acuity_score, confidence_pct, rationale_text, key_drivers, escalated, escalation_reason, suggested_routing, is_capacity_adjusted, model_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');

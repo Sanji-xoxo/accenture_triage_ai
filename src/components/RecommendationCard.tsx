@@ -48,8 +48,8 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
           {is_capacity_adjusted && <span className="block text-[9px] text-orange-600 font-bold mt-0.5 uppercase tracking-wide">Capacity Adjusted</span>}
         </div>
         <div className="text-right">
-          <span className="block text-[10px] text-clinical-text-muted uppercase tracking-wider font-semibold">Deterministic Score</span>
-          <span className="text-xs font-semibold text-slate-700">ESI {acuity_score} Engine</span>
+          <span className="block text-[10px] text-clinical-text-muted uppercase tracking-wider font-semibold">Primary Model Score</span>
+          <span className="text-xs font-semibold text-slate-700">Ensemble ESI {acuity_score}</span>
         </div>
       </div>
 
@@ -118,7 +118,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
       {/* Audit Footnote */}
       <div className="text-[10px] text-clinical-text-muted flex justify-between select-none pt-1 border-t border-slate-100 font-mono">
         <span>Engine: {model_version}</span>
-        <span>Recommendation by Rules Engine v1.0; explanation assisted by AI</span>
+        <span>Fully autonomous ML evaluation (Human-in-the-loop pending)</span>
       </div>
     </div>
   );

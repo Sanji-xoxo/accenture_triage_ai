@@ -45,7 +45,7 @@ const patients = [
 
 const insertPatient = db.prepare('INSERT INTO patients (id, name, age, sex, arrival_mode, chief_complaint_raw, nurse_observation, has_prior_history, history_summary, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 const insertVitals = db.prepare('INSERT INTO vitals_readings (id, patient_id, hr, bp_sys, bp_dia, rr, spo2, temp, pain_score, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-const insertRec = db.prepare('INSERT INTO recommendations (id, patient_id, acuity_score, confidence_pct, rationale_text, key_drivers, escalated, escalation_reason, suggested_routing, model_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+const insertRec = db.prepare('INSERT INTO recommendations (id, patient_id, acuity_score, confidence_pct, rationale_text, key_drivers, escalated, escalation_reason, suggested_routing, is_capacity_adjusted, model_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 const insertCapacity = db.prepare('INSERT INTO capacity_snapshots (id, zone_name, beds_total, beds_free, staff_on_shift, surge_mode, recorded_at) VALUES (?, ?, ?, ?, ?, ?, ?)');
 const insertAuditLog = db.prepare('INSERT INTO audit_logs (id, patient_id, event_type, actor, prior_value, new_value, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
 
@@ -94,7 +94,7 @@ db.transaction(() => {
   ];
 
   recData.forEach(r => {
-    insertRec.run(r.id, r.pId, r.esi, r.conf, r.rat, r.key_drivers, r.esc, r.reason, r.route, 'MIAI Core Engine v1.0', timeMinus(1));
+    insertRec.run(r.id, r.pId, r.esi, r.conf, r.rat, r.key_drivers, r.esc, r.reason, r.route, 0, 'MIAI Core Engine v1.0', timeMinus(1));
     
     // Automatically write AuditLogEntry for Recommendation Creation
     insertAuditLog.run(

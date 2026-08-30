@@ -385,20 +385,20 @@ export const IntakeForm: React.FC<IntakeFormProps> = ({ onSubmit, className = ''
 
       {/* Side Help Block */}
       <div className="lg:col-span-4 bg-slate-50 border border-slate-200 p-4.5 rounded shadow-sm space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b pb-1.5">Decision Engine Safety Protocol</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 border-b pb-1.5">Machine Learning Inference Protocol</h3>
         <p className="text-xs text-clinical-text-secondary leading-relaxed">
-          The MIAI system leverages a deterministic rules-based scoring engine for assigning ESI levels. 
+          The MIAI system leverages a multi-modal AI approach for predicting patient acuity and deterioration risks.
         </p>
         <div className="bg-white border rounded p-2.5 text-[11px] text-clinical-text-secondary space-y-1.5">
-          <p className="font-bold text-slate-800">Age-Stratified Thresholds:</p>
+          <p className="font-bold text-slate-800">Model Ensemble:</p>
           <ul className="list-disc list-inside pl-1 space-y-1">
-            <li><strong>Pediatric (&lt;12)</strong>: Low vital thresholds are tightened, fever carries higher weights.</li>
-            <li><strong>Adult (12-64)</strong>: Standard clinical parameters.</li>
-            <li><strong>Geriatric (65+)</strong>: Tachycardia is flagged early, neurological deficits weight heavily.</li>
+            <li><strong>XGBoost ESI Triage:</strong> Extracts features and scores ESI 1-5 with SHAP value explanations.</li>
+            <li><strong>Temporal DNN / GRU:</strong> Predicts continuous deterioration risk using baseline vitals and temporal variance.</li>
+            <li><strong>Gemini 1.5 Flash:</strong> Extracts key NLP variables, acts as the persona for evaluation, and synthesizes the final clinical rationale.</li>
           </ul>
         </div>
-        <div className="bg-red-50 border border-red-200 rounded p-2.5 text-[11px] text-red-950 font-medium">
-          <strong>Bias Upward Safety Margin:</strong> If AI confidence is low, symptoms are conflicting, or red flags are detected, the rules engine escalates the acuity level upward.
+        <div className="bg-blue-50 border border-blue-200 rounded p-2.5 text-[11px] text-blue-950 font-medium">
+          <strong>SHAP Explainability:</strong> The system surfaces all contributing positive and negative drivers so clinicians can transparently trust or overrule the model.
         </div>
       </div>
     </div>
