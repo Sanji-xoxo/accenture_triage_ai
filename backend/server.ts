@@ -15,7 +15,7 @@ app.use(express.json());
 const genAI = new GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY || '');
 
 // Helpers
-const genId = (prefix: string) => `${prefix}-${Date.now()}`;
+const genId = (prefix: string) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
 // ==========================================
 // 1. POST /api/patients (Create/Intake)
