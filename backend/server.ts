@@ -3,10 +3,13 @@ import cors from 'cors';
 import db from './db';
 import { evaluatePatient, PatientEvaluationInput } from './decision_engine/index';
 import { getSimNow, isSimRunning, simMultiplier, simOffsetMs, startSimulation, pauseSimulation, resetSimulation, setMultiplier, activeAlerts, dismissAlert } from './simulation';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const genAI = new GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY || '');
 
 // Helpers
 const genId = (prefix: string) => `${prefix}-${Date.now()}`;
@@ -47,7 +50,7 @@ app.get('/api/patients', (req, res) => {
   let query = `
     SELECT p.*, 
            (SELECT json_object('hr', hr, 'bp_sys', bp_sys, 'bp_dia', bp_dia, 'rr', rr, 'spo2', spo2, 'temp', temp, 'pain_score', pain_score) FROM vitals_readings WHERE patient_id = p.id ORDER BY recorded_at DESC LIMIT 1) as latest_vitals,
-           (SELECT json_object('id', id, 'acuity_score', acuity_score, 'confidence_pct', confidence_pct, 'escalated', escalated, 'suggested_routing', suggested_routing) FROM recommendations WHERE patient_id = p.id ORDER BY created_at DESC LIMIT 1) as latest_recommendation,
+           (SELECT json_object('id', id, 'acuity_score', acuity_score, 'confidence_pct', confidence_pct, 'escalated', escalated, 'escalation_reason', escalation_reason, 'suggested_routing', suggested_routing) FROM recommendations WHERE patient_id = p.id ORDER BY created_at DESC LIMIT 1) as latest_recommendation,
            (SELECT action_type FROM nurse_actions WHERE recommendation_id = (SELECT id FROM recommendations WHERE patient_id = p.id ORDER BY created_at DESC LIMIT 1) ORDER BY created_at DESC LIMIT 1) as triage_status
     FROM patients p
   `;
@@ -138,20 +141,68 @@ app.post('/api/patients/:id/vitals', (req, res) => {
   }
 });
 
-import { evaluatePatient, PatientEvaluationInput } from './decision_engine/index';
-
 // ==========================================
 // 5. POST /api/patients/:id/recommendations
 // ==========================================
-app.post('/api/patients/:id/recommendations', (req, res) => {
-  const { redFlags = [], lifeThreateningFlags = [], symptoms = [] } = req.body;
+app.post('/api/patients/:id/recommendations', async (req, res) => {
   const rId = genId('rec');
   const pId = req.params.id;
   const ts = getSimNow();
   
   try {
-    const patient = db.prepare('SELECT age, has_prior_history FROM patients WHERE id = ?').get(pId) as any;
+    const patient = db.prepare('SELECT chief_complaint_raw, nurse_observation, age, has_prior_history FROM patients WHERE id = ?').get(pId) as any;
     if (!patient) return res.status(404).json({ error: 'Patient not found' });
+
+    let redFlags: string[] = [];
+    let lifeThreateningFlags: string[] = [];
+    let symptoms: string[] = [];
+    let modelVersion = 'decision_engine_v1';
+    
+    // Fallback logic function to guarantee a result even if Gemini fails or is missing
+    const fallbackExtraction = () => {
+        const obs = (patient.nurse_observation || '').toLowerCase();
+        const cc = (patient.chief_complaint_raw || '').toLowerCase();
+        if (obs.includes('confusion') || obs.includes('altered')) redFlags.push('Altered Mental Status');
+        if (obs.includes('chest pain') || cc.includes('chest pain')) redFlags.push('Chest Pain');
+        if (obs.includes('unresponsive') || obs.includes('no pulse')) lifeThreateningFlags.push('Unresponsive / No Pulse');
+        if (obs.includes('pain') || cc.includes('pain')) symptoms.push('pain');
+        if (obs.includes('nausea') || cc.includes('nausea')) symptoms.push('nausea');
+        modelVersion = 'decision_engine_v1 (fallback)';
+    };
+
+    if (process.env.VITE_GEMINI_API_KEY && process.env.VITE_GEMINI_API_KEY.trim() !== '') {
+      try {
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const prompt = `
+          Analyze the following Emergency Department intake data:
+          Chief Complaint: ${patient.chief_complaint_raw}
+          Nurse Observation: ${patient.nurse_observation || 'None'}
+          
+          Extract the data into a JSON object with strictly these three arrays of strings:
+          {
+            "redFlags": ["list of critical warning signs, e.g., Altered Mental Status, Hypoxia, Chest Pain"],
+            "lifeThreateningFlags": ["list of immediate life threats, e.g., Unresponsive, Pulseless"],
+            "symptoms": ["list of general symptoms, e.g., pain, dizziness, nausea"]
+          }
+          
+          Return ONLY valid JSON.
+        `;
+        const result = await model.generateContent(prompt);
+        let text = result.response.text();
+        // Strip markdown code blocks if any
+        text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const parsed = JSON.parse(text);
+        redFlags = parsed.redFlags || [];
+        lifeThreateningFlags = parsed.lifeThreateningFlags || [];
+        symptoms = parsed.symptoms || [];
+        modelVersion = 'decision_engine_v1 + Gemini Live';
+      } catch (aiErr) {
+        console.error("Gemini AI Extraction failed, falling back to deterministic mock:", aiErr);
+        fallbackExtraction();
+      }
+    } else {
+        fallbackExtraction();
+    }
 
     const vitals = db.prepare('SELECT * FROM vitals_readings WHERE patient_id = ? ORDER BY recorded_at DESC LIMIT 1').get(pId) as any || {
       hr: null, bp_sys: null, bp_dia: null, rr: null, spo2: null, temp: null, pain_score: null
@@ -186,11 +237,11 @@ app.post('/api/patients/:id/recommendations', (req, res) => {
 
     db.transaction(() => {
       const stmt = db.prepare('INSERT INTO recommendations (id, patient_id, acuity_score, confidence_pct, rationale_text, key_drivers, escalated, escalation_reason, suggested_routing, is_capacity_adjusted, model_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
-      stmt.run(rId, pId, evaluation.acuity_score, evaluation.confidence_pct, rationale, JSON.stringify(evaluation.key_drivers), evaluation.escalated ? 1 : 0, evaluation.escalation_reason, suggestedRouting, evaluation.is_capacity_adjusted ? 1 : 0, evaluation.model_version, ts);
+      stmt.run(rId, pId, evaluation.acuity_score, evaluation.confidence_pct, rationale, JSON.stringify(evaluation.key_drivers), evaluation.escalated ? 1 : 0, evaluation.escalation_reason, suggestedRouting, evaluation.is_capacity_adjusted ? 1 : 0, modelVersion, ts);
       
       // Auto-write audit log per requirements
       const aStmt = db.prepare('INSERT INTO audit_logs (id, patient_id, event_type, actor, prior_value, new_value, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-      aStmt.run(genId('audit'), pId, 'RECOMMENDATION_GENERATED', evaluation.model_version, null, JSON.stringify({ recommended_esi: evaluation.acuity_score, confidence: evaluation.confidence_pct }), rationale, ts);
+      aStmt.run(genId('audit'), pId, 'RECOMMENDATION_GENERATED', modelVersion, null, JSON.stringify({ recommended_esi: evaluation.acuity_score, confidence: evaluation.confidence_pct }), rationale, ts);
     })();
     res.status(201).json({ id: rId, evaluation });
   } catch (err: any) {

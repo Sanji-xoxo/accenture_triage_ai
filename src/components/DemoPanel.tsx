@@ -76,7 +76,7 @@ export const DemoPanel: React.FC<DemoPanelProps> = ({
               className={`w-full py-1.5 rounded flex justify-center items-center font-medium border ${surgeMode ? 'bg-red-50 text-red-700 border-red-200' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'}`}
             >
               <Zap className="w-3.5 h-3.5 mr-1.5" /> 
-              {surgeMode ? 'Disable Surge Mode' : 'Enable Surge Mode'}
+              {surgeMode ? 'Disable Surge Mode' : 'Enable Surge Mode (3x Volume)'}
             </button>
             
             <button 

@@ -83,6 +83,17 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
         </p>
       </div>
 
+      {recommendation.escalation_reason && (
+        <div className="space-y-1 mt-2">
+          <span className="block text-[10px] text-red-600 uppercase tracking-wider font-bold flex items-center">
+             Escalation Reason
+          </span>
+          <p className="text-xs font-medium leading-relaxed text-red-700 whitespace-pre-line bg-red-50 p-2.5 rounded border border-red-100">
+            {recommendation.escalation_reason}
+          </p>
+        </div>
+      )}
+
       {/* Audit Footnote */}
       <div className="text-[10px] text-clinical-text-muted flex justify-between select-none pt-1 border-t border-slate-100 font-mono">
         <span>Engine: {model_version}</span>

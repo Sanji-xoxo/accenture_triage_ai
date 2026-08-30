@@ -59,6 +59,7 @@ function App() {
             acuity_score: p.latest_recommendation.acuity_score,
             confidence_score: p.latest_recommendation.confidence_pct,
             explanation: p.latest_recommendation.rationale_text || '',
+            escalation_reason: p.latest_recommendation.escalation_reason || null,
             is_escalated_low_confidence: p.latest_recommendation.escalated,
             is_escalated_red_flag: false,
             is_escalated_clinical: false,
@@ -231,32 +232,11 @@ function App() {
       });
       const { id: pId } = await pRes.json();
 
-      // 2. Rules engine mock - Moved to backend decision_engine!
-      // We simulate AI extraction of symptoms/flags based on the intake form inputs
-      const extractedSymptoms: string[] = [];
-      const extractedRedFlags: string[] = [];
-      const extractedLifeThreats: string[] = [];
-
-      if (newVitData.spo2 < 94) extractedRedFlags.push('Hypoxia');
-      if (nurseObs.toLowerCase().includes('confusion') || nurseObs.toLowerCase().includes('altered')) extractedRedFlags.push('Altered Mental Status');
-      if (nurseObs.toLowerCase().includes('chest pain')) extractedRedFlags.push('Chest Pain');
-      
-      if (nurseObs.toLowerCase().includes('unresponsive') || nurseObs.toLowerCase().includes('not breathing') || nurseObs.toLowerCase().includes('no pulse')) {
-        extractedLifeThreats.push('Unresponsive / No Pulse');
-      }
-
-      if (nurseObs.toLowerCase().includes('pain')) extractedSymptoms.push('pain');
-      if (nurseObs.toLowerCase().includes('dizzy')) extractedSymptoms.push('dizziness');
-
-      // 3. Trigger Recommendation (Backend evaluates and creates recommendation)
+      // 3. Trigger Recommendation (Backend evaluates and creates recommendation using Gemini AI)
       const rRes = await fetch(`/api/patients/${pId}/recommendations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          redFlags: extractedRedFlags,
-          lifeThreateningFlags: extractedLifeThreats,
-          symptoms: extractedSymptoms
-        })
+        body: JSON.stringify({}) // Let backend dynamically extract redFlags, lifeThreateningFlags, symptoms
       });
       const { id: rId, evaluation } = await rRes.json();
 
@@ -269,9 +249,10 @@ function App() {
         acuity_score: evaluation.acuity_score,
         confidence_score: evaluation.confidence_pct,
         explanation: evaluation.key_drivers.join('. '),
+        escalation_reason: evaluation.escalation_reason || null,
         key_drivers: evaluation.key_drivers,
         is_escalated_low_confidence: evaluation.confidence_pct < 60,
-        is_escalated_red_flag: extractedRedFlags.length > 0 || extractedLifeThreats.length > 0,
+        is_escalated_red_flag: evaluation.key_drivers.some((d: string) => d.includes('Red Flag') || d.includes('Life Threat')),
         is_escalated_clinical: false,
         suggested_routing: evaluation.suggested_routing,
         is_capacity_adjusted: evaluation.is_capacity_adjusted,

@@ -48,6 +48,7 @@ export interface Recommendation {
   is_escalated_low_confidence: boolean;
   is_escalated_red_flag: boolean;
   is_escalated_clinical: boolean;
+  escalation_reason?: string | null;
   key_drivers: string[]; // key clinical findings that drove the decision
   suggested_routing: string; // e.g. "Resus Room 1", "Acute Zone", "Fast Track"
   is_capacity_adjusted: boolean;
